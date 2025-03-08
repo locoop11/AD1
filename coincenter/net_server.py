@@ -47,6 +47,10 @@ class NetServer:
     
     def send(self, client_socket, data):
         """Send data to a client."""
+        # Ensure data is not None
+        if data is None:
+            data = ""
+            
         # Convert data to bytes if it's a string
         if isinstance(data, str):
             data = data.encode('utf-8')

@@ -15,6 +15,10 @@ class NetClient:
      
     def send(self, data):
         """Send data to the server, prefixing with the client ID."""
+        # Ensure data is not None
+        if data is None:
+            data = ""
+        
         message = f"{self.id} {data}"
         
         # Convert message to bytes if it's a string

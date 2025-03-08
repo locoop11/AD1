@@ -60,8 +60,14 @@ def process_manager_choice(client, choice):
         name = input("Enter asset name: ")
         try:
             price = float(input("Enter asset price: "))
-         
             supply = int(input("Enter available supply: "))
+            
+            if price <= 0 or supply <= 0:
+                print("Error: Price and supply must be positive values.")
+                input("\nPress Enter to continue...")
+                return True
+            
+            # Notice the correct format: ADD_ASSET symbol name price supply
             response = client.send(f"ADD_ASSET {symbol} {name} {price} {supply}")
             print(client.recv())
         except ValueError:
@@ -85,9 +91,13 @@ def process_manager_choice(client, choice):
     elif choice == '5':
         # View specific user details
         user_id = input("Enter user ID: ")
-        response = client.send(f"USER_DETAILS {user_id}")
-        print(f"\nUser {user_id} Details:")
-        print(client.recv())
+        try:
+            user_id = int(user_id)
+            response = client.send(f"USER_DETAILS {user_id}")
+            print(f"\nUser {user_id} Details:")
+            print(client.recv())
+        except ValueError:
+            print("Invalid input. User ID must be an integer.")
         input("\nPress Enter to continue...")
     
     elif choice == '6':

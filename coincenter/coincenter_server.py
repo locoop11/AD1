@@ -32,16 +32,21 @@ def handle_client(client_socket, client_address):
             if not request:  # Client disconnected
                 break
                 
-            print(f"Received request: {request} from {client_address}")
+            print(f"Received request: '{request}' from {client_address}")
             
             # Process request and get response
             response = process_request(request)
+            
+            # Debug
+            print(f"Sending response: '{response}' to {client_address}")
             
             # Send response back to client
             server.send(client_socket, response)
             
     except Exception as e:
         print(f"Error handling client {client_address}: {e}")
+        import traceback
+        traceback.print_exc()  # Print the full exception traceback
     finally:
         print(f"Connection from {client_address} closed")
 
@@ -53,77 +58,233 @@ def process_request(request):
     if not parts:
         return "ERROR: Empty request"
     
-    # Extract the user ID (first part) and the actual command (second part)
-    user_id = parts[0]
-    
+    # The first part is the user ID, the second part is the command
     if len(parts) < 2:
         return "ERROR: Malformed request"
         
-    command = parts[1]
+    user_id = parts[0]  # The user ID of the sender
+    command = parts[1]  # The actual command
     
-    # Manager commands
+    # Ensure the user exists in our system
+    if user_id.isdigit():
+        sender_id = int(user_id)
+        if sender_id not in ClientController.clients:
+            if sender_id != 0:  # If not manager, create a new user
+                new_user = User(sender_id)
+                # Give new users some starting money
+                new_user.deposit(10000.0)  # $10,000 starting balance
+                ClientController.clients[sender_id] = new_user
+    else:
+        return "ERROR: Invalid user ID"
+    
+    # Handle commands
     if command == "LIST_ASSETS":
         return AssetController.list_all_assets()
-        
-    elif command == "ADD_ASSET" and len(parts) >= 6:  # Changed from 5 to 6 to account for user_id
-        symbol = parts[2]  # Changed from parts[1] to parts[2]
-        name = parts[3]    # Changed from parts[2] to parts[3]
-        try:
-            price = float(parts[4])    # Changed from parts[3] to parts[4]
-            supply = int(parts[5])     # Changed from parts[4] to parts[5]
-            success = AssetController.add_asset(symbol, name, price, supply)
-            return "Asset added successfully" if success else "ERROR: Asset with this symbol already exists"
-        except ValueError:
-            return "ERROR: Invalid price or supply values"
-            
-    elif command == "REMOVE_ASSET" and len(parts) >= 3:  # Changed from 2 to 3
-        symbol = parts[2]  # Changed from parts[1] to parts[2]
-        AssetController.remove_asset(symbol)
-        return f"Asset {symbol} removed (if it existed)"
-        
-    elif command == "LIST_USERS":
-        user_list = []
-        for user_id, client in ClientController.clients.items():
-            if isinstance(client, User):
-                user_list.append(f"User ID: {user_id}")
-        return "No users registered" if not user_list else "\n".join(user_list)
-        
-    elif command == "USER_DETAILS" and len(parts) >= 3:  # Changed from 2 to 3
-        try:
-            requested_user_id = int(parts[2])  # Changed from parts[1] to parts[2]
-            client = ClientController.clients.get(requested_user_id)
-            if client and isinstance(client, User):
-                return str(client)
-            return f"ERROR: User {requested_user_id} not found"
-        except ValueError:
-            return "ERROR: Invalid user ID"
     
-    # User commands - update all indices in similar fashion
-    elif command == "GET_PORTFOLIO" and len(parts) >= 3:
+    elif command == "BUY_ASSET" and len(parts) >= 4:
         try:
-            requested_user_id = int(parts[2])
-            client = ClientController.clients.get(requested_user_id)
+            symbol = parts[2]
+            quantity = float(parts[3])
+            
+            client = ClientController.clients.get(sender_id)
             if client and isinstance(client, User):
-                if not client.portfolio:
-                    return "Your portfolio is empty"
+                # Check if the asset exists
+                asset = next((a for a in AssetController.assets if a.symbol == symbol), None)
+                if not asset:
+                    return f"ERROR: Asset {symbol} does not exist"
                 
-                portfolio_info = []
-                for symbol, quantity in client.portfolio.items():
-                    asset = next((a for a in AssetController.assets if a.symbol == symbol), None)
-                    if asset:
-                        value = quantity * asset.price
-                        portfolio_info.append(f"{symbol}: {quantity} units (${value:.2f})")
+                # Check if user has sufficient funds
+                if client.balance < asset.price * quantity:
+                    return f"ERROR: Insufficient funds. You need ${asset.price * quantity:.2f} but your balance is ${client.balance:.2f}"
                 
-                return "\n".join(portfolio_info)
-            return f"ERROR: User {requested_user_id} not found"
+                # Check if sufficient supply is available
+                if asset.available_supply < quantity:
+                    return f"ERROR: Insufficient supply. Only {asset.available_supply} units available of {symbol}"
+                
+                success = client.buy_asset(symbol, quantity)
+                if success:
+                    return f"Successfully purchased {quantity} units of {symbol}"
+                return "ERROR: Transaction failed"
+            return f"ERROR: User {sender_id} not found or is not a regular user"
         except ValueError:
-            return "ERROR: Invalid user ID"
+            return "ERROR: Invalid quantity"
+    
+    elif command == "SELL_ASSET" and len(parts) >= 4:
+        try:
+            symbol = parts[2]
+            quantity = float(parts[3])
             
-    # Continue with the same pattern for all other commands...
-    # Adjusting all the part indices by +1 to account for the user_id prefix
+            client = ClientController.clients.get(sender_id)
+            if client and isinstance(client, User):
+                # Check if user has enough of the asset to sell
+                if client.portfolio.get(symbol, 0) < quantity:
+                    return f"ERROR: Insufficient assets. You only have {client.portfolio.get(symbol, 0)} units of {symbol}"
+                
+                success = client.sell_asset(symbol, quantity)
+                if success:
+                    return f"Successfully sold {quantity} units of {symbol}"
+                return "ERROR: Transaction failed"
+            return f"ERROR: User {sender_id} not found or is not a regular user"
+        except ValueError:
+            return "ERROR: Invalid quantity"
+    
+    elif command == "GET_PORTFOLIO":
+        client = ClientController.clients.get(sender_id)
+        if client and isinstance(client, User):
+            if not client.portfolio:
+                return "Your portfolio is empty"
             
-    else:
-        return "ERROR: Unknown or malformed command"
+            portfolio_details = []
+            total_value = 0.0
+            
+            for symbol, quantity in client.portfolio.items():
+                asset = next((a for a in AssetController.assets if a.symbol == symbol), None)
+                if asset:
+                    value = asset.price * quantity
+                    total_value += value
+                    portfolio_details.append(f"{symbol}: {quantity} units (${value:.2f})")
+            
+            return "\n".join(portfolio_details) + f"\n\nTotal Portfolio Value: ${total_value:.2f}"
+        return f"ERROR: User {sender_id} not found or is not a regular user"
+    
+    elif command == "GET_BALANCE":
+        client = ClientController.clients.get(sender_id)
+        if client and isinstance(client, User):
+            return f"Your balance: ${client.balance:.2f}"
+        return f"ERROR: User {sender_id} not found or is not a regular user"
+    
+    elif command == "DEPOSIT" and len(parts) >= 3:
+        try:
+            amount = float(parts[2])
+            
+            client = ClientController.clients.get(sender_id)
+            if client and isinstance(client, User):
+                if amount <= 0:
+                    return "ERROR: Deposit amount must be positive"
+                
+                client.deposit(amount)
+                return f"Successfully deposited ${amount:.2f}. New balance: ${client.balance:.2f}"
+            return f"ERROR: User {sender_id} not found or is not a regular user"
+        except ValueError:
+            return "ERROR: Invalid amount"
+    
+    elif command == "WITHDRAW" and len(parts) >= 3:
+        try:
+            amount = float(parts[2])
+            
+            client = ClientController.clients.get(sender_id)
+            if client and isinstance(client, User):
+                if amount <= 0:
+                    return "ERROR: Withdrawal amount must be positive"
+                
+                if amount > client.balance:
+                    return f"ERROR: Insufficient funds. Your balance is ${client.balance:.2f}"
+                
+                client.withdraw(amount)
+                return f"Successfully withdrew ${amount:.2f}. New balance: ${client.balance:.2f}"
+            return f"ERROR: User {sender_id} not found or is not a regular user"
+        except ValueError:
+            return "ERROR: Invalid amount"
+            
+    elif command == "USER_DETAILS":
+        # Only manager can see user details
+        requester = ClientController.clients.get(sender_id)
+        if sender_id != 0:  # Manager ID is 0
+            return "ERROR: Only manager can view user details"
+        
+        if len(parts) < 3:
+            return "ERROR: Missing user ID parameter"
+            
+        try:
+            target_id = int(parts[2])
+            target_user = ClientController.clients.get(target_id)
+            
+            if not target_user:
+                return f"ERROR: User {target_id} not found"
+            
+            if not isinstance(target_user, User):
+                return f"User {target_id} is a manager, not a regular user"
+            
+            # Get portfolio value
+            portfolio_value = 0.0
+            portfolio_details = []
+            
+            for symbol, quantity in target_user.portfolio.items():
+                asset = next((a for a in AssetController.assets if a.symbol == symbol), None)
+                if asset:
+                    value = asset.price * quantity
+                    portfolio_value += value
+                    portfolio_details.append(f"{symbol}: {quantity} units (${value:.2f})")
+            
+            return f"User ID: {target_id}\nBalance: ${target_user.balance:.2f}\nPortfolio Value: ${portfolio_value:.2f}\n" + (
+                "\nPortfolio:\n" + "\n".join(portfolio_details) if portfolio_details else "\nPortfolio: Empty"
+            )
+        except ValueError:
+            return "ERROR: Invalid user ID format"
+    
+    elif command == "ADD_ASSET" and len(parts) >= 5:
+        # Ensure sender is manager
+        if sender_id != 0:  # Manager ID is 0
+            return "ERROR: Only manager can add assets"
+        
+        try:
+            symbol = parts[2]
+            name = parts[3]
+            price = float(parts[4])
+            supply = int(parts[5])
+            
+            if price <= 0 or supply <= 0:
+                return "ERROR: Price and supply must be positive"
+            
+            success = AssetController.add_asset(symbol, name, price, supply)
+            if success:
+                return f"Successfully added asset {name} ({symbol})"
+            return f"ERROR: Asset with symbol {symbol} already exists"
+        except ValueError:
+            return "ERROR: Invalid price or supply format"
+        except IndexError:
+            return "ERROR: Missing parameters for ADD_ASSET command"
+    
+    elif command == "REMOVE_ASSET" and len(parts) >= 3:
+        # Ensure sender is manager
+        if sender_id != 0:  # Manager ID is 0
+            return "ERROR: Only manager can remove assets"
+        
+        symbol = parts[2]
+        
+        # Check if the asset exists
+        asset = next((a for a in AssetController.assets if a.symbol == symbol), None)
+        if not asset:
+            return f"ERROR: Asset {symbol} does not exist"
+        
+        AssetController.remove_asset(symbol)
+        return f"Successfully removed asset {symbol}"
+    
+    elif command == "LIST_USERS":
+        # Ensure sender is manager
+        if sender_id != 0:  # Manager ID is 0
+            return "ERROR: Only manager can list users"
+        
+        users = [client for client_id, client in ClientController.clients.items() if isinstance(client, User)]
+        
+        if not users:
+            return "No users registered"
+        
+        user_info = []
+        for user in users:
+            # Calculate portfolio value
+            portfolio_value = 0.0
+            for symbol, quantity in user.portfolio.items():
+                asset = next((a for a in AssetController.assets if a.symbol == symbol), None)
+                if asset:
+                    portfolio_value += asset.price * quantity
+            
+            user_info.append(f"User ID: {user.id} - Balance: ${user.balance:.2f} - Portfolio Value: ${portfolio_value:.2f}")
+        
+        return "\n".join(user_info)
+        
+    # Default response if no conditions match
+    return f"ERROR: Unknown or malformed command: {command}"
 
 def initialize_sample_data():
     """Initialize sample assets for testing."""
