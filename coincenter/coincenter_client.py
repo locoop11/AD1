@@ -1,14 +1,14 @@
 """
 Aplicações Distribuídas - Projeto 1 - coincenter_client.py
 Grupo: XX
-Números de aluno: XXXXX XXXXX
+Números de aluno: 60253
 """
 
 import sys
 import os
 from net_client import *
 
-### código do programa principal ###
+
 def show_manager_menu():
     """Display the menu options for a manager user."""
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -67,7 +67,6 @@ def process_manager_choice(client, choice):
                 input("\nPress Enter to continue...")
                 return True
             
-            # Notice the correct format: ADD_ASSET symbol name price supply
             response = client.send(f"ADD_ASSET {symbol} {name} {price} {supply}")
             print(client.recv())
         except ValueError:
@@ -121,14 +120,14 @@ def process_user_choice(client, user_id, choice):
     
     elif choice == '2':
         # View my portfolio
-        response = client.send(f"GET_PORTFOLIO {user_id}")
+        response = client.send("GET_PORTFOLIO")
         print("\nYour Portfolio:")
         print(client.recv())
         input("\nPress Enter to continue...")
     
     elif choice == '3':
         # View my balance
-        response = client.send(f"GET_BALANCE {user_id}")
+        response = client.send("GET_BALANCE")
         print("\nYour Balance:")
         print(client.recv())
         input("\nPress Enter to continue...")
@@ -138,7 +137,12 @@ def process_user_choice(client, user_id, choice):
         symbol = input("Enter asset symbol to buy: ")
         try:
             quantity = float(input("Enter quantity to buy: "))
-            response = client.send(f"BUY_ASSET {user_id} {symbol} {quantity}")
+            if quantity <= 0:
+                print("Error: Quantity must be positive")
+                input("\nPress Enter to continue...")
+                return True
+                
+            response = client.send(f"BUY_ASSET {symbol} {quantity}")
             print(client.recv())
         except ValueError:
             print("Invalid input. Quantity must be a number.")
@@ -149,7 +153,7 @@ def process_user_choice(client, user_id, choice):
         symbol = input("Enter asset symbol to sell: ")
         try:
             quantity = float(input("Enter quantity to sell: "))
-            response = client.send(f"SELL_ASSET {user_id} {symbol} {quantity}")
+            response = client.send(f"SELL_ASSET {symbol} {quantity}")
             print(client.recv())
         except ValueError:
             print("Invalid input. Quantity must be a number.")
@@ -159,7 +163,12 @@ def process_user_choice(client, user_id, choice):
         # Deposit money
         try:
             amount = float(input("Enter amount to deposit: "))
-            response = client.send(f"DEPOSIT {user_id} {amount}")
+            if amount <= 0:
+                print("Error: Amount must be positive")
+                input("\nPress Enter to continue...")
+                return True
+                
+            response = client.send(f"DEPOSIT {amount}")
             print(client.recv())
         except ValueError:
             print("Invalid input. Amount must be a number.")
@@ -169,7 +178,12 @@ def process_user_choice(client, user_id, choice):
         # Withdraw money
         try:
             amount = float(input("Enter amount to withdraw: "))
-            response = client.send(f"WITHDRAW {user_id} {amount}")
+            if amount <= 0:
+                print("Error: Amount must be positive")
+                input("\nPress Enter to continue...")
+                return True
+                
+            response = client.send(f"WITHDRAW {amount}")
             print(client.recv())
         except ValueError:
             print("Invalid input. Amount must be a number.")

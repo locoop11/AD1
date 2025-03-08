@@ -65,6 +65,9 @@ class User(Client):
         return f"User {self.id} - Balance: {self.balance}, Portfolio: {self.portfolio}"
 
     def buy_asset(self, asset_symbol: str, quantity: float) -> bool:
+        # Debug print
+        print(f"DEBUG: User.buy_asset - Symbol: {asset_symbol}, Quantity: {quantity}")
+        
         asset = next((a for a in AssetController.assets if a.symbol == asset_symbol), None)
         if asset and asset.available_supply >= quantity and self.balance >= asset.price * quantity:
             asset.available_supply -= quantity

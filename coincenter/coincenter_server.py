@@ -1,7 +1,7 @@
 """
 Aplicações Distribuídas - Projeto 1 - coincenter_server.py
 Grupo: XX
-Números de aluno: XXXXX XXXXX
+Números de aluno: 60253
 """
 
 import sys
@@ -10,7 +10,7 @@ import threading
 from net_server import *
 from coincenter_data import *
 
-### código do programa principal ###
+
 server = None
 
 def handle_shutdown(signum, frame):
@@ -65,13 +65,12 @@ def process_request(request):
     user_id = parts[0]  # The user ID of the sender
     command = parts[1]  # The actual command
     
-    # Ensure the user exists in our system
+    # Ensure the user exists in the system
     if user_id.isdigit():
         sender_id = int(user_id)
         if sender_id not in ClientController.clients:
             if sender_id != 0:  # If not manager, create a new user
                 new_user = User(sender_id)
-                # Give new users some starting money
                 new_user.deposit(10000.0)  # $10,000 starting balance
                 ClientController.clients[sender_id] = new_user
     else:
@@ -83,7 +82,7 @@ def process_request(request):
     
     elif command == "BUY_ASSET" and len(parts) >= 4:
         try:
-            symbol = parts[2]
+            symbol = parts[2] 
             quantity = float(parts[3])
             
             client = ClientController.clients.get(sender_id)
@@ -106,8 +105,9 @@ def process_request(request):
                     return f"Successfully purchased {quantity} units of {symbol}"
                 return "ERROR: Transaction failed"
             return f"ERROR: User {sender_id} not found or is not a regular user"
-        except ValueError:
-            return "ERROR: Invalid quantity"
+        except ValueError as e:
+            print(f"DEBUG: ValueError in BUY_ASSET: {e}")
+            return "ERROR: Invalid quantity format. Must be a number."
     
     elif command == "SELL_ASSET" and len(parts) >= 4:
         try:
@@ -155,7 +155,11 @@ def process_request(request):
     
     elif command == "DEPOSIT" and len(parts) >= 3:
         try:
+            # Make sure we're reading the correct parameter
             amount = float(parts[2])
+            
+            # Debug print to verify the amount
+            print(f"DEBUG: Deposit request - User ID: {sender_id}, Amount: {amount}")
             
             client = ClientController.clients.get(sender_id)
             if client and isinstance(client, User):
@@ -165,12 +169,17 @@ def process_request(request):
                 client.deposit(amount)
                 return f"Successfully deposited ${amount:.2f}. New balance: ${client.balance:.2f}"
             return f"ERROR: User {sender_id} not found or is not a regular user"
-        except ValueError:
+        except ValueError as e:
+            print(f"DEBUG: ValueError in DEPOSIT: {e}")
             return "ERROR: Invalid amount"
     
     elif command == "WITHDRAW" and len(parts) >= 3:
         try:
+            # Make sure we're reading the correct parameter
             amount = float(parts[2])
+            
+            # Debug print to verify the amount
+            print(f"DEBUG: Withdraw request - User ID: {sender_id}, Amount: {amount}")
             
             client = ClientController.clients.get(sender_id)
             if client and isinstance(client, User):
@@ -183,7 +192,9 @@ def process_request(request):
                 client.withdraw(amount)
                 return f"Successfully withdrew ${amount:.2f}. New balance: ${client.balance:.2f}"
             return f"ERROR: User {sender_id} not found or is not a regular user"
-        except ValueError:
+        except ValueError as e:
+            # Add more detailed error logging
+            print(f"DEBUG: ValueError in WITHDRAW: {e}")
             return "ERROR: Invalid amount"
             
     elif command == "USER_DETAILS":
