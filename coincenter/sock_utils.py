@@ -107,3 +107,26 @@ def create_tcp_client_socket(address='localhost', port=9999):
         print(f"Unexpected error creating client socket: {e}")
         traceback.print_exc()
         sys.exit(1)
+
+def receive_all(socket, length):
+    """
+    Receives exactly 'length' bytes from the socket.
+    
+    Parameters:
+    socket (socket.socket): The socket from which to receive data.
+    length (int): The number of bytes to receive.
+    
+    Returns:
+    bytes: The received data.
+    """
+    data = b''
+    remaining = length
+    
+    while remaining > 0:
+        chunk = socket.recv(min(remaining, 4096))
+        if not chunk:  # Connection closed
+            raise ConnectionError("Connection closed before receiving all data")
+        data += chunk
+        remaining -= len(chunk)
+    
+    return data

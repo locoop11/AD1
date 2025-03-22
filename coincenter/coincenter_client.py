@@ -1,13 +1,12 @@
 """
-Aplicações Distribuídas - Projeto 1 - coincenter_client.py
+Aplicações Distribuídas - Projeto 2 - coincenter_client.py
 Grupo: XX
 Números de aluno: 60253
 """
 
 import sys
 import os
-from net_client import *
-
+from coincenter_stub import CoinCenterStub
 
 def show_manager_menu():
     """Display the menu options for a manager user."""
@@ -18,12 +17,10 @@ def show_manager_menu():
     print("\n[1] List all assets")
     print("[2] Add new asset")
     print("[3] Remove asset")
-    print("[4] View all users")
-    print("[5] View specific user details")
-    print("[6] Exit")
+    print("[4] Exit")
     print("\n" + "="*50)
     
-    choice = input("\nEnter your choice (1-6): ")
+    choice = input("\nEnter your choice (1-4): ")
     return choice
 
 def show_user_menu():
@@ -33,31 +30,31 @@ def show_user_menu():
     print("          COIN CENTER USER INTERFACE")
     print("="*50)
     print("\n[1] List all available assets")
-    print("[2] View my portfolio")
-    print("[3] View my balance")
-    print("[4] Buy asset")
-    print("[5] Sell asset")
-    print("[6] Deposit money")
-    print("[7] Withdraw money")
-    print("[8] Exit")
+    print("[2] View my portfolio and balance")
+    print("[3] Buy asset")
+    print("[4] Sell asset")
+    print("[5] Exit")
     print("\n" + "="*50)
     
-    choice = input("\nEnter your choice (1-8): ")
+    choice = input("\nEnter your choice (1-5): ")
     return choice
 
-def process_manager_choice(client, choice):
+def process_manager_choice(stub, choice):
     """Process the manager's menu choice and send the corresponding request to the server."""
     if choice == '1':
         # List all assets
-        response = client.send("LIST_ASSETS")
-        print("\nAvailable Assets:")
-        print(client.recv())
+        response = stub.get_all_assets()
+        if response[1]:
+            print("\nAvailable Assets:")
+            for asset in response[2:]:
+                print(asset)
+        else:
+            print("\nNo assets available.")
         input("\nPress Enter to continue...")
     
     elif choice == '2':
         # Add new asset
         symbol = input("Enter asset symbol: ")
-        name = input("Enter asset name: ")
         try:
             price = float(input("Enter asset price: "))
             supply = int(input("Enter available supply: "))
@@ -67,8 +64,8 @@ def process_manager_choice(client, choice):
                 input("\nPress Enter to continue...")
                 return True
             
-            response = client.send(f"ADD_ASSET {symbol} {name} {price} {supply}")
-            print(client.recv())
+            response = stub.add_asset(symbol, price, supply)
+            print("Asset added successfully!" if response[1] else "Failed to add asset.")
         except ValueError:
             print("Invalid input. Price must be a number and supply must be an integer.")
         input("\nPress Enter to continue...")
@@ -76,31 +73,16 @@ def process_manager_choice(client, choice):
     elif choice == '3':
         # Remove asset
         symbol = input("Enter asset symbol to remove: ")
-        response = client.send(f"REMOVE_ASSET {symbol}")
-        print(client.recv())
+        response = stub.remove_asset(symbol)
+        if response[1]:
+            print(f"Asset {response[2]} removed successfully!")
+        else:
+            print("Failed to remove asset.")
         input("\nPress Enter to continue...")
     
     elif choice == '4':
-        # View all users
-        response = client.send("LIST_USERS")
-        print("\nRegistered Users:")
-        print(client.recv())
-        input("\nPress Enter to continue...")
-    
-    elif choice == '5':
-        # View specific user details
-        user_id = input("Enter user ID: ")
-        try:
-            user_id = int(user_id)
-            response = client.send(f"USER_DETAILS {user_id}")
-            print(f"\nUser {user_id} Details:")
-            print(client.recv())
-        except ValueError:
-            print("Invalid input. User ID must be an integer.")
-        input("\nPress Enter to continue...")
-    
-    elif choice == '6':
         # Exit
+        response = stub.exit()
         return False
     
     else:
@@ -109,30 +91,35 @@ def process_manager_choice(client, choice):
     
     return True
 
-def process_user_choice(client, user_id, choice):
+def process_user_choice(stub, choice):
     """Process the user's menu choice and send the corresponding request to the server."""
     if choice == '1':
         # List all available assets
-        response = client.send("LIST_ASSETS")
-        print("\nAvailable Assets:")
-        print(client.recv())
+        response = stub.get_all_assets()
+        if response[1]:
+            print("\nAvailable Assets:")
+            for asset in response[2:]:
+                print(asset)
+        else:
+            print("\nNo assets available.")
         input("\nPress Enter to continue...")
     
     elif choice == '2':
-        # View my portfolio
-        response = client.send("GET_PORTFOLIO")
-        print("\nYour Portfolio:")
-        print(client.recv())
+        # View my portfolio and balance
+        response = stub.get_assets_balance()
+        if response[1]:
+            print(f"\nYour Balance: ${response[2]:.2f}")
+            print("\nYour Portfolio:")
+            if len(response) > 3:
+                for asset in response[3:]:
+                    print(asset)
+            else:
+                print("Your portfolio is empty.")
+        else:
+            print("Failed to retrieve portfolio.")
         input("\nPress Enter to continue...")
     
     elif choice == '3':
-        # View my balance
-        response = client.send("GET_BALANCE")
-        print("\nYour Balance:")
-        print(client.recv())
-        input("\nPress Enter to continue...")
-    
-    elif choice == '4':
         # Buy asset
         symbol = input("Enter asset symbol to buy: ")
         try:
@@ -142,55 +129,31 @@ def process_user_choice(client, user_id, choice):
                 input("\nPress Enter to continue...")
                 return True
                 
-            response = client.send(f"BUY_ASSET {symbol} {quantity}")
-            print(client.recv())
+            response = stub.buy(symbol, quantity)
+            print("Purchase successful!" if response[1] else "Purchase failed.")
+        except ValueError:
+            print("Invalid input. Quantity must be a number.")
+        input("\nPress Enter to continue...")
+    
+    elif choice == '4':
+        # Sell asset
+        symbol = input("Enter asset symbol to sell: ")
+        try:
+            quantity = float(input("Enter quantity to sell: "))
+            if quantity <= 0:
+                print("Error: Quantity must be positive")
+                input("\nPress Enter to continue...")
+                return True
+                
+            response = stub.sell(symbol, quantity)
+            print("Sale successful!" if response[1] else "Sale failed.")
         except ValueError:
             print("Invalid input. Quantity must be a number.")
         input("\nPress Enter to continue...")
     
     elif choice == '5':
-        # Sell asset
-        symbol = input("Enter asset symbol to sell: ")
-        try:
-            quantity = float(input("Enter quantity to sell: "))
-            response = client.send(f"SELL_ASSET {symbol} {quantity}")
-            print(client.recv())
-        except ValueError:
-            print("Invalid input. Quantity must be a number.")
-        input("\nPress Enter to continue...")
-    
-    elif choice == '6':
-        # Deposit money
-        try:
-            amount = float(input("Enter amount to deposit: "))
-            if amount <= 0:
-                print("Error: Amount must be positive")
-                input("\nPress Enter to continue...")
-                return True
-                
-            response = client.send(f"DEPOSIT {amount}")
-            print(client.recv())
-        except ValueError:
-            print("Invalid input. Amount must be a number.")
-        input("\nPress Enter to continue...")
-    
-    elif choice == '7':
-        # Withdraw money
-        try:
-            amount = float(input("Enter amount to withdraw: "))
-            if amount <= 0:
-                print("Error: Amount must be positive")
-                input("\nPress Enter to continue...")
-                return True
-                
-            response = client.send(f"WITHDRAW {amount}")
-            print(client.recv())
-        except ValueError:
-            print("Invalid input. Amount must be a number.")
-        input("\nPress Enter to continue...")
-    
-    elif choice == '8':
         # Exit
+        response = stub.exit()
         return False
     
     else:
@@ -220,8 +183,8 @@ def main():
     display_welcome(user_id)
     
     try:
-        # Create client connection
-        client = NetClient(user_id, server_ip, server_port)
+        # Create client stub
+        stub = CoinCenterStub(user_id, server_ip, server_port)
         
         # Check if user is manager (assuming user_id 0 is the manager)
         is_manager = (user_id == "0")
@@ -230,14 +193,12 @@ def main():
         while running:
             if is_manager:
                 choice = show_manager_menu()
-                running = process_manager_choice(client, choice)
+                running = process_manager_choice(stub, choice)
             else:
                 choice = show_user_menu()
-                running = process_user_choice(client, user_id, choice)
+                running = process_user_choice(stub, choice)
         
-        # Close the connection when exiting
         print("\nThank you for using Coin Center. Goodbye!")
-        client.close()
         
     except ConnectionRefusedError:
         print(f"\nError: Could not connect to server at {server_ip}:{server_port}")
