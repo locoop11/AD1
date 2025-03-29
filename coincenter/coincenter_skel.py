@@ -4,238 +4,275 @@ Grupo: XX
 Números de aluno: 60253
 """
 
-import pickle
-from coincenter_data import *
+from coincenter_data import Asset, User
+from typing import Dict, List
 
 class CoinCenterSkeleton:
     def __init__(self):
-        """Initialize the skeleton."""
-        self.methods = {
-            10: self._add_asset,
-            20: self._get_all_assets,
-            30: self._remove_asset,
-            40: self._exit_manager,
-            50: self._get_all_assets,
-            60: self._get_assets_balance,
-            70: self._buy,
-            80: self._sell,
-            90: self._exit_user
-        }
-    
-    def invoke_method(self, request):
-        """
-        Invoke the appropriate method based on the request.
+        self.assets: List[Asset] = []
+        self.users: Dict[int, User] = {0: User(0)}  # Initialize with the manager
         
-        Parameters:
-        request (list): The request message.
-        
-        Returns:
-        list: The response message.
-        """
+        # Initialize with some sample assets
+        self.assets.append(Asset("Bitcoin", "BTC", 50000.0, 100))
+        self.assets.append(Asset("Ethereum", "ETH", 3000.0, 500))
+        self.assets.append(Asset("Cardano", "ADA", 2.5, 10000))
+
+    def handle_request(self, request):
+        """Process the request from the client and return a response"""
         try:
-            # Validate the request format
             if not isinstance(request, list) or len(request) < 2:
-                return [0, False]
+                return "Invalid request format"
             
-            # Get the method code
             method_code = request[0]
-            
-            # Get the user ID
             user_id = request[-1]
             
-            # Make sure the user exists
-            if user_id not in ClientController.clients:
-                if user_id != 0:  # If not manager, create a new user
-                    new_user = User(user_id)
-                    new_user.deposit(10000.0)  # $10,000 starting balance
-                    ClientController.clients[user_id] = new_user
-            
-            # Invoke the appropriate method
-            if method_code in self.methods:
-                return self.methods[method_code](request)
+            # Ensure user exists
+            if user_id not in self.users and user_id != 0:
+                self.users[user_id] = User(user_id)
+                
+            # Route to appropriate handler
+            if method_code == 10:
+                return self.handle_add_asset(request)
+            elif method_code in (20, 50):
+                return self.handle_get_all_assets(request)
+            elif method_code == 30:
+                return self.handle_remove_asset(request)
+            elif method_code == 60:
+                return self.handle_get_assets_balance(request)
+            elif method_code == 70:
+                return self.handle_buy(request)
+            elif method_code == 80:
+                return self.handle_sell(request)
+            elif method_code in (40, 90):
+                return self.handle_exit(request)
+            elif method_code == 100:
+                return self.handle_deposit(request)
+            elif method_code == 110:
+                return self.handle_withdraw(request)
             else:
-                return [method_code + 1, False]
-        
+                return f"Unknown method code: {method_code}"
         except Exception as e:
-            print(f"Error invoking method: {e}")
-            return [0, False]
-    
-    def _add_asset(self, request):
-        """Add a new asset to the system."""
-        # [10, asset_symbol, asset_price, available_supply, ID]
-        if len(request) < 5:
-            return [11, False]
+            return f"Error processing request: {e}"
+
+    def handle_add_asset(self, args):
+        """Add a new asset to the system"""
+        # [10, asset_name, asset_symbol, asset_price, available_supply, user_id]
+        if len(args) < 6 or args[5] != 0:  # Only manager can add assets
+            return "Permission denied or invalid arguments"
             
-        # Validate user is manager
-        if request[4] != 0:
-            return [11, False]
-            
-        # Extract parameters
-        asset_symbol = request[1]
-        asset_price = request[2]
-        available_supply = request[3]
+        asset_name = args[1]
+        asset_symbol = args[2]
+        asset_price = args[3]
+        available_supply = args[4]
         
-        # Validate parameters
+        # Validate inputs
         if not isinstance(asset_price, (int, float)) or not isinstance(available_supply, (int, float)):
-            return [11, False]
+            return "Price and supply must be numeric values"
             
         if asset_price <= 0 or available_supply <= 0:
-            return [11, False]
+            return "Price and supply must be positive values"
+        
+        # Check if asset already exists
+        if any(asset.symbol == asset_symbol for asset in self.assets):
+            return f"Asset with symbol {asset_symbol} already exists"
         
         # Add the asset
-        success = AssetController.add_asset(asset_symbol, asset_symbol, asset_price, available_supply)
-        return [11, success]
-    
-    def _get_all_assets(self, request):
-        """Get list of all assets in the system."""
-        # [20, ID] or [50, ID]
-        assets = AssetController.assets
+        self.assets.append(Asset(asset_name, asset_symbol, asset_price, available_supply))
+        return f"Asset {asset_symbol} added successfully"
+
+    def handle_get_all_assets(self, args):
+        """Get a list of all assets in the system"""
+        if not self.assets:
+            return "No assets available"
+            
         asset_list = []
-        
-        for asset in assets:
+        for asset in self.assets:
             asset_list.append(str(asset))
         
-        return [request[0] + 1, True] + asset_list if asset_list else [request[0] + 1, False]
-    
-    def _remove_asset(self, request):
-        """Remove an asset from the system."""
-        # [30, asset_symbol, ID]
-        if len(request) < 3:
-            return [31, False]
+        return "\n".join(asset_list)
+
+    def handle_remove_asset(self, args):
+        """Remove an asset from the system"""
+        # [30, asset_symbol, user_id]
+        if len(args) < 3 or args[2] != 0:  # Only manager can remove assets
+            return "Permission denied or invalid arguments"
             
-        # Validate user is manager
-        if request[2] != 0:
-            return [31, False]
-            
-        # Extract parameters
-        asset_symbol = request[1]
+        asset_symbol = args[1]
         
-        # Check if the asset exists
-        asset = next((a for a in AssetController.assets if a.symbol == asset_symbol), None)
-        if not asset:
-            return [31, False]
+        # Find the asset
+        asset_to_remove = None
+        for asset in self.assets:
+            if asset.symbol == asset_symbol:
+                asset_to_remove = asset
+                break
+                
+        if not asset_to_remove:
+            return f"Asset with symbol {asset_symbol} not found"
         
         # Remove the asset
-        AssetController.remove_asset(asset_symbol)
-        return [31, True, asset_symbol]
-    
-    def _exit_manager(self, request):
-        """Exit the system (manager)."""
-        # [40, ID]
-        if request[1] != 0:
-            return [41, False]
-        
-        return [41, True]
-    
-    def _get_assets_balance(self, request):
-        """Get the user's assets and balance."""
-        # [60, ID]
-        user_id = request[1]
-        
-        # Check if user exists
-        if user_id not in ClientController.clients:
-            return [61, False]
+        self.assets.remove(asset_to_remove)
+        return f"Asset {asset_symbol} removed successfully"
+
+    def handle_get_assets_balance(self, args):
+        """Get a user's assets and balance"""
+        # [60, user_id]
+        if len(args) < 2:
+            return "Invalid arguments"
             
-        # Get the user
-        user = ClientController.clients[user_id]
+        user_id = args[1]
         
-        # Check if user is a regular user
-        if not isinstance(user, User):
-            return [61, False]
+        if user_id not in self.users:
+            return f"User {user_id} not found"
+            
+        user = self.users[user_id]
         
-        # Get the user's balance and portfolio
-        balance = user.balance
+        # Format the response
+        balance_info = f"Your balance: ${user.balance:.2f}"
+        
+        if not user.holdings:
+            return f"{balance_info}\nYour portfolio is empty"
+            
         portfolio = []
+        for symbol, quantity in user.holdings.items():
+            asset = next((a for a in self.assets if a.symbol == symbol), None)
+            if asset:
+                value = quantity * asset.price
+                portfolio.append(f"{symbol}: {quantity} units (${value:.2f})")
         
-        for symbol, quantity in user.portfolio.items():
-            portfolio.append(f"{symbol}: {quantity}")
-        
-        return [61, True, balance] + portfolio
-    
-    def _buy(self, request):
-        """Buy an asset."""
-        # [70, asset_symbol_quantity, ID]
-        if len(request) < 3:
-            return [71, False]
+        return f"{balance_info}\n" + "\n".join(portfolio)
+
+    def handle_buy(self, args):
+        """Buy an asset"""
+        # [70, asset_symbol_quantity, user_id]
+        if len(args) < 3:
+            return "Invalid arguments"
             
-        # Extract parameters
-        asset_symbol_quantity = request[1]
-        user_id = request[2]
+        asset_symbol_quantity = args[1]
+        user_id = args[2]
         
-        # Check if user exists
-        if user_id not in ClientController.clients:
-            return [71, False]
+        if user_id not in self.users:
+            return f"User {user_id} not found"
             
-        # Get the user
-        user = ClientController.clients[user_id]
-        
-        # Check if user is a regular user
-        if not isinstance(user, User):
-            return [71, False]
-        
-        # Parse the asset symbol and quantity
+        # Parse asset symbol and quantity
         try:
             parts = asset_symbol_quantity.split('_')
             if len(parts) != 2:
-                return [71, False]
+                return "Invalid buy format. Use: symbol_quantity"
                 
             asset_symbol = parts[0]
             quantity = float(parts[1])
             
-            # Check if the asset exists
-            asset = next((a for a in AssetController.assets if a.symbol == asset_symbol), None)
+            # Find the asset
+            asset = next((a for a in self.assets if a.symbol == asset_symbol), None)
             if not asset:
-                return [71, False]
+                return f"Asset {asset_symbol} not found"
             
-            # Check if user has sufficient funds
-            if user.balance < asset.price * quantity:
-                return [71, False]
+            # Check availability
+            if not asset.check_availability(quantity):
+                return f"Insufficient supply of {asset_symbol}"
+                
+            # Check user balance
+            user = self.users[user_id]
+            total_cost = asset.price * quantity
             
-            # Check if sufficient supply is available
-            if asset.available_supply < quantity:
-                return [71, False]
+            if user.balance < total_cost:
+                return f"Insufficient balance. Cost: ${total_cost:.2f}, Your balance: ${user.balance:.2f}"
+                
+            # Process the purchase
+            asset.decrease_quntity(quantity)
+            user.balance -= total_cost
+            user.holdings[asset_symbol] = user.holdings.get(asset_symbol, 0) + quantity
             
-            # Buy the asset
-            success = user.buy_asset(asset_symbol, quantity)
-            return [71, success]
-        except:
-            return [71, False]
-    
-    def _sell(self, request):
-        """Sell an asset."""
-        # [80, asset_symbol, quantity, ID]
-        if len(request) < 4:
-            return [81, False]
+            return f"Successfully purchased {quantity} units of {asset_symbol} for ${total_cost:.2f}"
             
-        # Extract parameters
-        asset_symbol = request[1]
-        quantity = request[2]
-        user_id = request[3]
-        
-        # Check if user exists
-        if user_id not in ClientController.clients:
-            return [81, False]
+        except Exception as e:
+            return f"Error processing buy request: {e}"
+
+    def handle_sell(self, args):
+        """Sell an asset"""
+        # [80, asset_symbol, quantity, user_id]
+        if len(args) < 4:
+            return "Invalid arguments"
             
-        # Get the user
-        user = ClientController.clients[user_id]
+        asset_symbol = args[1]
+        quantity = args[2]
+        user_id = args[3]
         
-        # Check if user is a regular user
-        if not isinstance(user, User):
-            return [81, False]
+        if user_id not in self.users:
+            return f"User {user_id} not found"
+            
+        user = self.users[user_id]
         
-        # Check if the user has the asset
-        if asset_symbol not in user.portfolio:
-            return [81, False]
+        # Check if user owns the asset
+        if asset_symbol not in user.holdings:
+            return f"You do not own any {asset_symbol}"
+            
+        # Check if user has enough units
+        if user.holdings[asset_symbol] < quantity:
+            return f"Insufficient units. You own {user.holdings[asset_symbol]} {asset_symbol}"
+            
+        # Find the asset
+        asset = next((a for a in self.assets if a.symbol == asset_symbol), None)
+        if not asset:
+            return f"Asset {asset_symbol} not found"
+            
+        # Process the sale
+        total_value = asset.price * quantity
+        asset.increase_quntity(quantity)
+        user.balance += total_value
+        user.holdings[asset_symbol] -= quantity
         
-        # Check if the user has enough of the asset
-        if user.portfolio[asset_symbol] < quantity:
-            return [81, False]
+        # Remove from portfolio if quantity is 0
+        if user.holdings[asset_symbol] == 0:
+            del user.holdings[asset_symbol]
+            
+        return f"Successfully sold {quantity} units of {asset_symbol} for ${total_value:.2f}"
+
+    def handle_exit(self, args):
+        """Handle exit request"""
+        # [40, user_id] or [90, user_id]
+        return "Goodbye!"
+
+    def handle_deposit(self, args):
+        """Handle deposit request"""
+        # [100, quantity, user_id]
+        if len(args) < 3:
+            return "Invalid arguments"
+            
+        quantity = args[1]
+        user_id = args[2]
         
-        # Sell the asset
-        success = user.sell_asset(asset_symbol, quantity)
-        return [81, success]
-    
-    def _exit_user(self, request):
-        """Exit the system (user)."""
-        # [90, ID]
-        return [91, True]
+        if not isinstance(quantity, (int, float)) or quantity <= 0:
+            return "Deposit amount must be a positive number"
+            
+        if user_id not in self.users:
+            return f"User {user_id} not found"
+            
+        user = self.users[user_id]
+        user.balance += quantity
+            
+        return f"Successfully deposited ${quantity:.2f}. New balance: ${user.balance:.2f}"
+
+    def handle_withdraw(self, args):
+        """Handle withdrawal request"""
+        # [110, quantity, user_id]
+        if len(args) < 3:
+            return "Invalid arguments"
+            
+        quantity = args[1]
+        user_id = args[2]
+        
+        if not isinstance(quantity, (int, float)) or quantity <= 0:
+            return "Withdrawal amount must be a positive number"
+            
+        if user_id not in self.users:
+            return f"User {user_id} not found"
+            
+        user = self.users[user_id]
+        
+        if user.balance < quantity:
+            return f"Insufficient balance. Your balance: ${user.balance:.2f}"
+            
+        user.balance -= quantity
+            
+        return f"Successfully withdrew ${quantity:.2f}. New balance: ${user.balance:.2f}"

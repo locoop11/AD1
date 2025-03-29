@@ -1,73 +1,60 @@
-"""
-Aplicações Distribuídas - Projeto 1 - net_server.py
-Grupo: XX
-Números de aluno: XXXXX XXXXX
-"""
 from sock_utils import *
+import pickle
 
 class NetServer:
     def __init__(self, host, port):
-        """Initialize a network server with the given host and port."""
         self.host = host
         self.port = port
-        self.socket = create_tcp_server_socket(host, port)
-    
+        self.server_socket = create_tcp_server_socket(host, port)
+
     def accept(self):
-        """Accept and return a new client connection."""
-        return self.socket.accept()
+        """Accept a new client connection"""
+        client_socket, client_address = self.server_socket.accept()
+        print(f"New connection from {client_address}")
+        return client_socket, client_address
 
     def recv(self, client_socket):
-        """Receive and return data from a client."""
-        # Receive the header with message length (4 bytes)
-        header = client_socket.recv(4)
-        if not header:
-            return None
-            
-        # Extract message length
-        msg_len = int.from_bytes(header, byteorder='big')
-        
-        # Receive the complete message
-        chunks = []
-        bytes_received = 0
-        
-        while bytes_received < msg_len:
-            chunk = client_socket.recv(min(msg_len - bytes_received, 4096))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            bytes_received += len(chunk)
-            
-        message = b''.join(chunks)
-        
-        # Decode the message if it's a string
+        """Receive and deserialize data from a client"""
         try:
-            return message.decode('utf-8')
-        except UnicodeDecodeError:
-            return message
+            # Receive message length
+            len_bytes = client_socket.recv(4)
+            if not len_bytes:
+                return None
+                
+            msg_len = int.from_bytes(len_bytes, byteorder='big')
+            
+            # Receive the complete message
+            data = receive_all(client_socket, msg_len)
+            
+            # Deserialize the data
+            return pickle.loads(data)
+        except ConnectionError:
+            print("Client disconnected unexpectedly")
+            return None
+        except Exception as e:
+            print(f"Error receiving data: {e}")
+            return None
     
     def send(self, client_socket, data):
-        """Send data to a client."""
-        # Ensure data is not None
-        if data is None:
-            data = ""
+        """Serialize and send data to a client"""
+        try:
+            # Serialize the data
+            serialized_data = pickle.dumps(data)
             
-        # Convert data to bytes if it's a string
-        if isinstance(data, str):
-            data = data.encode('utf-8')
+            # Send the length of the message followed by the message
+            msg_len = len(serialized_data)
+            client_socket.sendall(msg_len.to_bytes(4, byteorder='big'))
+            client_socket.sendall(serialized_data)
             
-        # Add data length prefix (4 bytes)
-        data_len = len(data)
-        header = data_len.to_bytes(4, byteorder='big')
-        
-        # Send the header followed by the data
-        client_socket.sendall(header + data)
-        
-        return True
+            return True
+        except Exception as e:
+            print(f"Error sending data: {e}")
+            return False
 
     def close(self):
-        """Close the server socket."""
+        """Close the server socket"""
         try:
-            self.socket.close()
+            self.server_socket.close()
             print("Server socket closed")
         except Exception as e:
             print(f"Error closing server socket: {e}")

@@ -4,79 +4,87 @@ Grupo: XX
 Números de aluno: 60253
 """
 
+from net_client import NetClient
 import pickle
-import socket
-from sock_utils import receive_all
 
 class CoinCenterStub:
-    def __init__(self, user_id, host, port):
-        """Initialize the stub with the user ID and server information."""
-        self.user_id = int(user_id)
-        self.host = host
-        self.port = port
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((host, port))
+    def __init__(self, user_id, server_ip, server_port):
+        self.id = user_id
+        self.net_client = NetClient(server_ip, server_port)
+
+    def handle_command(self, command):
+        response = None
+        command_parts = command.split(";")
+        command_type = command_parts[0].upper()
         
-    def add_asset(self, asset_symbol, asset_price, available_supply):
-        """Add a new asset to the system."""
-        msg = [10, asset_symbol, asset_price, available_supply, self.user_id]
-        return self._send_receive(msg)
-    
+        if self.id == 0:  # manager's commands
+            if command_type == "ADD_ASSET":
+                response = self.add_asset(command_parts[1], command_parts[2], 
+                                         float(command_parts[3]), float(command_parts[4]))
+            elif command_type == "REMOVE_ASSET":
+                response = self.remove_asset(command_parts[1])
+            elif command_type == "LIST_ASSETS":
+                response = self.get_all_assets()
+        else:  # user's commands
+            if command_type == "LIST_ASSETS":
+                response = self.get_all_assets()
+            elif command_type == "BALANCE":
+                response = self.get_assets_balance()
+            elif command_type == "BUY":
+                response = self.buy(f"{command_parts[1]}_{command_parts[2]}")
+            elif command_type == "SELL":
+                response = self.sell(command_parts[1], float(command_parts[2]))
+            elif command_type == "DEPOSIT":
+                response = self.deposit(float(command_parts[1]))
+            elif command_type == "WITHDRAW":
+                response = self.withdraw(float(command_parts[1]))
+
+        return response
+            
+    def add_asset(self, asset_name, asset_symbol, asset_price, available_supply):
+        request = [10, asset_name, asset_symbol, asset_price, available_supply, self.id]
+        self.net_client.send(request)
+        response = self.net_client.recv()
+        return response
+
     def get_all_assets(self):
-        """Get list of all assets in the system."""
-        msg = [20 if self.user_id == 0 else 50, self.user_id]
-        return self._send_receive(msg)
-    
+        request = [20 if self.id == 0 else 50, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
     def remove_asset(self, asset_symbol):
-        """Remove an asset from the system."""
-        msg = [30, asset_symbol, self.user_id]
-        return self._send_receive(msg)
-    
+        request = [30, asset_symbol, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
     def get_assets_balance(self):
-        """Get the user's assets and balance."""
-        msg = [60, self.user_id]
-        return self._send_receive(msg)
-    
-    def buy(self, asset_symbol, quantity):
-        """Buy an asset."""
-        msg = [70, f"{asset_symbol}_{quantity}", self.user_id]
-        return self._send_receive(msg)
-    
+        request = [60, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
+    def buy(self, asset_symbol_quantity):
+        request = [70, asset_symbol_quantity, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
     def sell(self, asset_symbol, quantity):
-        """Sell an asset."""
-        msg = [80, asset_symbol, quantity, self.user_id]
-        return self._send_receive(msg)
-    
+        request = [80, asset_symbol, quantity, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
+    def deposit(self, quantity):
+        request = [100, quantity, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
+    def withdraw(self, quantity):
+        request = [110, quantity, self.id]
+        self.net_client.send(request)
+        return self.net_client.recv()
+
     def exit(self):
-        """Exit the system."""
-        msg = [40 if self.user_id == 0 else 90, self.user_id]
-        response = self._send_receive(msg)
-        self.close()
+        request = [40 if self.id == 0 else 90, self.id]
+        self.net_client.send(request)
+        response = self.net_client.recv()
+        self.net_client.close()
         return response
-    
-    def _send_receive(self, msg):
-        """Send a message to the server and return the response."""
-        # Serialize the message
-        serialized_msg = pickle.dumps(msg)
-        
-        # Send the length of the message followed by the message
-        msg_len = len(serialized_msg)
-        self.socket.sendall(msg_len.to_bytes(4, byteorder='big'))
-        self.socket.sendall(serialized_msg)
-        
-        # Receive the response length
-        len_bytes = receive_all(self.socket, 4)
-        msg_len = int.from_bytes(len_bytes, byteorder='big')
-        
-        # Receive the response
-        serialized_response = receive_all(self.socket, msg_len)
-        response = pickle.loads(serialized_response)
-        
-        return response
-    
-    def close(self):
-        """Close the connection."""
-        try:
-            self.socket.close()
-        except:
-            pass
