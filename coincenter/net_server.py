@@ -1,3 +1,8 @@
+"""
+Aplicações Distribuídas - Projeto 2 - coincenter_stub.py
+Grupo: XX
+Números de aluno: 60253
+"""
 from sock_utils import *
 import pickle
 
